@@ -11,11 +11,11 @@ import (
 	"github.com/plastinin/photo-quiz-bot/internal/config"
 	"github.com/plastinin/photo-quiz-bot/internal/repository/postgres"
 	"github.com/plastinin/photo-quiz-bot/internal/service"
+	"github.com/plastinin/photo-quiz-bot/internal/web"
 )
 
 func main() {
 
-	// Загружаем конфигурацию
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -24,22 +24,24 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// БД
 	db, err := postgres.New(ctx, cfg.DB.DSN())
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
 	log.Println("Connected to database")
-	repo := postgres.NewSituationRepository(db)
 
-	// Сервис
+	repo := postgres.NewSituationRepository(db)
 	gameService := service.NewGameService(repo)
 
-	//  Бот
 	telegramBot, err := bot.New(cfg.BotToken, gameService, repo, cfg.AdminID)
 	if err != nil {
 		log.Fatalf("Failed to create bot: %v", err)
+	}
+
+	webServer, err := web.NewServer(":"+cfg.WebPort, repo, cfg.BotToken)
+	if err != nil {
+		log.Fatalf("Failed to create web server: %v", err)
 	}
 
 	go func() {
@@ -48,12 +50,18 @@ func main() {
 		<-sigCh
 		log.Println("Received shutdown signal")
 		cancel()
+		webServer.Shutdown(context.Background())
 	}()
 
-	// Запускаем бота
+	go func() {
+		if err := webServer.Run(); err != nil && err.Error() != "http: Server closed" {
+			log.Printf("Web server error: %v", err)
+		}
+	}()
+
 	if err := telegramBot.Run(ctx); err != nil && err != context.Canceled {
 		log.Fatalf("Bot error: %v", err)
 	}
 
-	log.Println("Bot stopped")
+	log.Println("Application stopped")
 }

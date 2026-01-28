@@ -10,6 +10,7 @@ type Config struct {
 	BotToken string
 	AdminID  int64
 	DB       DBConfig
+	WebPort  string
 }
 
 type DBConfig struct {
@@ -41,6 +42,7 @@ func Load() (*Config, error) {
 			Password: getEnv("DB_PASSWORD", ""),
 			Name:     getEnv("DB_NAME", "photo_quiz"),
 		},
+		WebPort: getEnv("WEB_PORT", "8080"),
 	}
 
 	if cfg.BotToken == "" {

@@ -33,3 +33,12 @@ func ConfirmResetKeyboard() tgbotapi.InlineKeyboardMarkup {
 		),
 	)
 }
+
+func ConfirmDeleteKeyboard() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⚠️ Да, удалить ВСЁ", "confirm_delete"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "cancel_delete"),
+		),
+	)
+}

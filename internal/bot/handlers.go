@@ -59,6 +59,8 @@ func (h *Handler) handleMessage(ctx context.Context, msg *tgbotapi.Message) {
 			h.cmdStats(ctx, msg)
 		case "help":
 			h.cmdHelp(ctx, msg)
+		case "delete":
+    		h.cmdDelete(ctx, msg)
 		default:
 			h.sendText(msg.Chat.ID, "Неизвестная команда. Используйте /help")
 		}
@@ -94,6 +96,10 @@ func (h *Handler) handleCallback(ctx context.Context, cb *tgbotapi.CallbackQuery
 		h.cbConfirmReset(ctx, cb)
 	case "cancel_reset":
 		h.cbCancelReset(ctx, cb)
+	case "confirm_delete":
+    	h.cbConfirmDelete(ctx, cb)
+	case "cancel_delete":
+    	h.cbCancelDelete(ctx, cb)
 	}
 }
 
@@ -166,11 +172,12 @@ func (h *Handler) cmdHelp(ctx context.Context, msg *tgbotapi.Message) {
 *Команды администратора:*
 /add — добавить новую ситуацию
 /reset — сбросить игру (все ситуации снова доступны)
+/delete — удалить ВСЕ ситуации и фото
 
 *Как играть:*
 1. Нажмите /start
 2. Смотрите на фото и угадывайте ситуацию
-3. Кнопка "Ещё" покажет еще фотографии по ситуации
+3. Кнопка "Ещё" покажет фото с другого ракурса
 4. "Правильный ответ" покажет ответ
 5. "Следующий ход" — переход к новой ситуации`
 
@@ -276,7 +283,6 @@ func (h *Handler) cbNextRound(ctx context.Context, cb *tgbotapi.CallbackQuery) {
 		log.Printf("Error finishing round: %v", err)
 	}
 
-	// Начинаем новый
 	photo, err := h.game.StartNewRound(ctx)
 	if err != nil {
 		if errors.Is(err, service.ErrNoSituations) {
@@ -336,6 +342,52 @@ func (h *Handler) sendGamePhoto(ctx context.Context, chatID int64, fileID string
 	photo.Caption = caption
 	photo.ReplyMarkup = GameKeyboard(hasMore)
 	h.bot.Send(photo)
+}
+
+func (h *Handler) cmdDelete(ctx context.Context, msg *tgbotapi.Message) {
+	if !h.isAdmin(msg.From.ID) {
+		h.sendText(msg.Chat.ID, "⛔ Эта команда доступна только администратору")
+		return
+	}
+
+	total, _, err := h.repo.GetStats(ctx)
+	if err != nil {
+		log.Printf("Error getting stats: %v", err)
+		h.sendText(msg.Chat.ID, "Ошибка получения статистики")
+		return
+	}
+
+	if total == 0 {
+		h.sendText(msg.Chat.ID, "База данных уже пуста")
+		return
+	}
+
+	reply := tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf("🗑️ *ВНИМАНИЕ!*\n\nВы собираетесь удалить ВСЕ данные:\n• Ситуаций: %d\n\nЭто действие необратимо!", total))
+	reply.ParseMode = "Markdown"
+	reply.ReplyMarkup = ConfirmDeleteKeyboard()
+	h.bot.Send(reply)
+}
+
+func (h *Handler) cbConfirmDelete(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	if !h.isAdmin(cb.From.ID) {
+		return
+	}
+
+	count, err := h.repo.DeleteAll(ctx)
+	if err != nil {
+		log.Printf("Error deleting all: %v", err)
+		h.sendText(cb.Message.Chat.ID, "Ошибка удаления данных")
+		return
+	}
+
+	// Сбрасываем состояние игры
+	h.game.ResetGame(ctx)
+
+	h.sendText(cb.Message.Chat.ID, fmt.Sprintf("✅ Удалено ситуаций: %d\n\nБаза данных очищена.", count))
+}
+
+func (h *Handler) cbCancelDelete(ctx context.Context, cb *tgbotapi.CallbackQuery) {
+	h.sendText(cb.Message.Chat.ID, "❌ Удаление отменено")
 }
 
 func (h *Handler) sendText(chatID int64, text string) {
