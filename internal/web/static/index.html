@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ебанись</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="header__title">🍌🍩 Photo-quiz, motherfucker!</h1>
+            <div class="header__stats" id="stats">
+                <span class="stats__item">Осталось: <strong id="remaining">-</strong></span>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="main">
+            <!-- Start screen -->
+            <div class="screen screen--start" id="startScreen">
+                <div class="card card--welcome">
+                    <div class="card__icon">📷</div>
+                    <h2 class="card__title">Добро пожаловать!</h2>
+                    <p class="card__text">Угадайте, что изображено на фотографии</p>
+                    <button class="btn btn--primary btn--large" id="startBtn">
+                        Начать игру
+                    </button>
+                </div>
+            </div>
+
+            <!-- Game screen -->
+            <div class="screen screen--game hidden" id="gameScreen">
+                <!-- Photo card -->
+                <div class="card card--photo">
+                    <div class="photo-container">
+                        <img src="" alt="Ситуация" class="photo" id="photo">
+                        <div class="photo-loader hidden" id="photoLoader">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                    <div class="photo-counter" id="photoCounter">
+                        Фото <span id="currentPhoto">1</span> из <span id="totalPhotos">1</span>
+                    </div>
+                </div>
+
+                <!-- Answer card (hidden by default) -->
+                <div class="card card--answer hidden" id="answerCard">
+                    <div class="answer__label">Правильный ответ:</div>
+                    <div class="answer__text" id="answerText"></div>
+                </div>
+
+                <!-- Controls -->
+                <div class="controls">
+                    <div class="controls__row">
+                        <button class="btn btn--secondary" id="moreBtn">
+                            📷 Ещё
+                        </button>
+                        <button class="btn btn--secondary" id="answerBtn">
+                            ✅ Ответ
+                        </button>
+                    </div>
+                    <div class="controls__row">
+                        <button class="btn btn--primary btn--full" id="nextBtn">
+                            ➡️ Следующий ход
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game over screen -->
+            <div class="screen screen--gameover hidden" id="gameOverScreen">
+                <div class="card card--welcome">
+                    <div class="card__icon">🎉</div>
+                    <h2 class="card__title">Поздравляем!</h2>
+                    <p class="card__text">Все ситуации сыграны</p>
+                    <p class="card__subtext">Попросите администратора сбросить игру или добавить новые ситуации</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Snackbar for notifications -->
+        <div class="snackbar hidden" id="snackbar"></div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>© 2025 Plastinin. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

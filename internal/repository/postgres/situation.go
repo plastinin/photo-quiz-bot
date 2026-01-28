@@ -169,3 +169,19 @@ func (r *SituationRepository) getPhotosBySituationID(ctx context.Context, situat
 
 	return photos, rows.Err()
 }
+
+func (r *SituationRepository) DeleteAll(ctx context.Context) (int, error) {
+
+	var count int
+	err := r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM situations`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count situations: %w", err)
+	}
+
+	_, err = r.db.Pool.Exec(ctx, `DELETE FROM situations`)
+	if err != nil {
+		return 0, fmt.Errorf("delete all: %w", err)
+	}
+
+	return count, nil
+}
