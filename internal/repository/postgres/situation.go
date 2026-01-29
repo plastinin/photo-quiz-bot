@@ -52,6 +52,23 @@ func (r *SituationRepository) AddPhoto(ctx context.Context, situationID int, fil
 	return nil
 }
 
+func (r *SituationRepository) Create(ctx context.Context, answer string, photoFileIDs []string) error {
+	// Создаём ситуацию
+	situationID, err := r.CreateSituation(ctx, answer)
+	if err != nil {
+		return err
+	}
+
+	// Добавляем фотографии
+	for _, fileID := range photoFileIDs {
+		if err := r.AddPhoto(ctx, situationID, fileID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *SituationRepository) GetRandomUnused(ctx context.Context) (*domain.SituationWithPhotos, error) {
 	
 	var s domain.Situation
@@ -164,6 +181,7 @@ func (r *SituationRepository) getPhotosBySituationID(ctx context.Context, situat
 		if err := rows.Scan(&p.ID, &p.SituationID, &p.FileID, &p.SortOrder, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan photo: %w", err)
 		}
+		p.OrderNum = p.SortOrder // для совместимости
 		photos = append(photos, p)
 	}
 

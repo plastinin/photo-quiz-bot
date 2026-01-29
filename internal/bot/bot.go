@@ -7,6 +7,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/plastinin/photo-quiz-bot/internal/repository/postgres"
 	"github.com/plastinin/photo-quiz-bot/internal/service"
+	"github.com/plastinin/photo-quiz-bot/internal/web"
 )
 
 type Bot struct {
@@ -14,7 +15,7 @@ type Bot struct {
 	handler *Handler
 }
 
-func New(token string, game *service.GameService, repo *postgres.SituationRepository, adminID int64) (*Bot, error) {
+func New(token string, game *service.GameService, repo *postgres.SituationRepository, adminID int64, webServer *web.Server) (*Bot, error) {
 	api, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, err
@@ -22,7 +23,7 @@ func New(token string, game *service.GameService, repo *postgres.SituationReposi
 
 	log.Printf("Authorized on account %s", api.Self.UserName)
 
-	handler := NewHandler(api, game, repo, adminID)
+	handler := NewHandler(api, game, repo, adminID, webServer)
 
 	return &Bot{
 		api:     api,
@@ -41,10 +42,9 @@ func (b *Bot) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Bot stopping...")
 			return ctx.Err()
 		case update := <-updates:
-			go b.handler.HandleUpdate(ctx, update)
+			b.handler.Handle(ctx, update)
 		}
 	}
 }
