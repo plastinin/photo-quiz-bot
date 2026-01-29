@@ -1,14 +1,16 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ебанись</title>
+    <title>🍌🍩 Photo-quiz, motherfucker!</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div class="container">
         <!-- Header -->
@@ -21,13 +23,25 @@
 
         <!-- Main content -->
         <main class="main">
-            <!-- Start screen -->
-            <div class="screen screen--start" id="startScreen">
-                <div class="card card--welcome">
-                    <div class="card__icon">📷</div>
-                    <h2 class="card__title">Добро пожаловать!</h2>
-                    <p class="card__text">Угадайте, что изображено на фотографии</p>
-                    <button class="btn btn--primary btn--large" id="startBtn">
+            <!-- Setup screen (enter players) -->
+            <div class="screen screen--setup" id="setupScreen">
+                <div class="card card--setup">
+                    <div class="card__icon">👥</div>
+                    <h2 class="card__title">Введите имена игроков</h2>
+                    <p class="card__text">От 1 до 10 игроков</p>
+
+                    <div class="players-form" id="playersForm">
+                        <div class="player-input-group">
+                            <input type="text" class="input player-input" placeholder="Игрок 1" maxlength="20">
+                            <button type="button" class="btn-icon btn-remove hidden" title="Удалить">✕</button>
+                        </div>
+                    </div>
+
+                    <button class="btn btn--text" id="addPlayerBtn">
+                        + Добавить игрока
+                    </button>
+
+                    <button class="btn btn--primary btn--large" id="createSessionBtn">
                         Начать игру
                     </button>
                 </div>
@@ -35,16 +49,29 @@
 
             <!-- Game screen -->
             <div class="screen screen--game hidden" id="gameScreen">
+                <!-- Current player banner -->
+                <div class="current-player-banner" id="currentPlayerBanner">
+                    <span class="current-player-name" id="currentPlayerName">Игрок</span>, твой ход!
+                </div>
+
                 <!-- Photo card -->
                 <div class="card card--photo">
                     <div class="photo-container">
+                        <button class="photo-nav photo-nav--prev hidden" id="photoPrev" title="Предыдущее фото">
+                            ‹
+                        </button>
                         <img src="" alt="Ситуация" class="photo" id="photo">
+                        <button class="photo-nav photo-nav--next hidden" id="photoNext" title="Следующее фото">
+                            ›
+                        </button>
                         <div class="photo-loader hidden" id="photoLoader">
                             <div class="spinner"></div>
                         </div>
                     </div>
                     <div class="photo-counter" id="photoCounter">
                         Фото <span id="currentPhoto">1</span> из <span id="totalPhotos">1</span>
+                        <span class="photo-unlocked" id="photoUnlocked">(открыто: <span
+                                id="unlockedCount">1</span>)</span>
                     </div>
                 </div>
 
@@ -52,6 +79,17 @@
                 <div class="card card--answer hidden" id="answerCard">
                     <div class="answer__label">Правильный ответ:</div>
                     <div class="answer__text" id="answerText"></div>
+                    <div class="answer__waiting" id="answerWaiting">
+                        ⏳ Ожидание ввода очков от администратора...
+                    </div>
+                </div>
+
+                <!-- Scoreboard -->
+                <div class="card card--scoreboard" id="scoreboardCard">
+                    <div class="scoreboard__title">🤑 BazuCoin</div>
+                    <div class="scoreboard__list" id="scoreboardList">
+                        <!-- Filled by JS -->
+                    </div>
                 </div>
 
                 <!-- Controls -->
@@ -74,11 +112,17 @@
 
             <!-- Game over screen -->
             <div class="screen screen--gameover hidden" id="gameOverScreen">
-                <div class="card card--welcome">
+                <div class="card card--results">
                     <div class="card__icon">🎉</div>
-                    <h2 class="card__title">Поздравляем!</h2>
-                    <p class="card__text">Все ситуации сыграны</p>
-                    <p class="card__subtext">Попросите администратора сбросить игру или добавить новые ситуации</p>
+                    <h2 class="card__title">Игра завершена!</h2>
+
+                    <div class="final-scoreboard" id="finalScoreboard">
+                        <!-- Filled by JS -->
+                    </div>
+
+                    <button class="btn btn--primary btn--large" id="newGameBtn">
+                        Новая игра
+                    </button>
                 </div>
             </div>
         </main>
@@ -88,10 +132,11 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>© 2025 Plastinin. All rights reserved.</p>
+            <p>© 2026 Plastinin</p>
         </footer>
     </div>
 
     <script src="app.js"></script>
 </body>
+
 </html>

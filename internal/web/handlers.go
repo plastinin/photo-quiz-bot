@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"sync"
 
 	"github.com/plastinin/photo-quiz-bot/internal/domain"
 	"github.com/plastinin/photo-quiz-bot/internal/repository/postgres"
@@ -13,37 +12,31 @@ import (
 )
 
 type Handlers struct {
-	game *service.GameService
-	repo *postgres.SituationRepository
-
-	// Отдельное состояние для веба
-	webState *WebGameState
-	mu       sync.RWMutex
+	game    *service.GameService
+	repo    *postgres.SituationRepository
+	session *SessionManager
 }
 
-type WebGameState struct {
-	CurrentSituation *domain.SituationWithPhotos
-	CurrentPhotoIdx  int
-}
-
-func NewHandlers(repo *postgres.SituationRepository) *Handlers {
+func NewHandlers(repo *postgres.SituationRepository, session *SessionManager) *Handlers {
 	return &Handlers{
-		game:     service.NewGameService(repo),
-		repo:     repo,
-		webState: &WebGameState{},
+		game:    service.NewGameService(repo),
+		repo:    repo,
+		session: session,
 	}
 }
 
-// Response structures
 type GameResponse struct {
-	Success      bool   `json:"success"`
-	PhotoURL     string `json:"photoUrl,omitempty"`
-	CurrentPhoto int    `json:"currentPhoto,omitempty"`
-	TotalPhotos  int    `json:"totalPhotos,omitempty"`
-	Answer       string `json:"answer,omitempty"`
-	Message      string `json:"message,omitempty"`
-	HasMore      bool   `json:"hasMore"`
-	GameOver     bool   `json:"gameOver"`
+	Success       bool                  `json:"success"`
+	PhotoURL      string                `json:"photoUrl,omitempty"`
+	CurrentPhoto  int                   `json:"currentPhoto,omitempty"`
+	TotalPhotos   int                   `json:"totalPhotos,omitempty"`
+	Answer        string                `json:"answer,omitempty"`
+	Message       string                `json:"message,omitempty"`
+	HasMore       bool                  `json:"hasMore"`
+	GameOver      bool                  `json:"gameOver"`
+	CurrentPlayer *domain.Player        `json:"currentPlayer,omitempty"`
+	Scoreboard    []domain.PlayerScore  `json:"scoreboard,omitempty"`
+	NeedScore     bool                  `json:"needScore,omitempty"`
 }
 
 type StatsResponse struct {
@@ -52,17 +45,105 @@ type StatsResponse struct {
 	Remaining int `json:"remaining"`
 }
 
-// POST /api/start
+type SessionResponse struct {
+	Success       bool                  `json:"success"`
+	Message       string                `json:"message,omitempty"`
+	Session       *domain.GameSession   `json:"session,omitempty"`
+	CurrentPlayer *domain.Player        `json:"currentPlayer,omitempty"`
+	Scoreboard    []domain.PlayerScore  `json:"scoreboard,omitempty"`
+}
+
+type CreateSessionRequest struct {
+	Players []string `json:"players"`
+}
+
+func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
+	var req CreateSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.errorResponse(w, "Неверный формат запроса", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Players) < 1 {
+		h.errorResponse(w, "Нужен хотя бы один игрок", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Players) > 10 {
+		h.errorResponse(w, "Максимум 10 игроков", http.StatusBadRequest)
+		return
+	}
+
+	for _, name := range req.Players {
+		if name == "" {
+			h.errorResponse(w, "Имя игрока не может быть пустым", http.StatusBadRequest)
+			return
+		}
+	}
+
+	session := h.session.CreateSession(req.Players)
+	currentPlayer := h.session.GetCurrentPlayer()
+
+	h.jsonResponse(w, SessionResponse{
+		Success:       true,
+		Session:       session,
+		CurrentPlayer: currentPlayer,
+		Scoreboard:    h.session.GetScoreboard(),
+	})
+}
+
+func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
+	session := h.session.GetSession()
+	if session == nil {
+		h.jsonResponse(w, SessionResponse{
+			Success: false,
+			Message: "Сессия не создана",
+		})
+		return
+	}
+
+	h.jsonResponse(w, SessionResponse{
+		Success:       true,
+		Session:       session,
+		CurrentPlayer: h.session.GetCurrentPlayer(),
+		Scoreboard:    h.session.GetScoreboard(),
+	})
+}
+
+func (h *Handlers) EndSession(w http.ResponseWriter, r *http.Request) {
+	scoreboard := h.session.FinishGame()
+	if scoreboard == nil {
+		h.errorResponse(w, "Нет активной сессии", http.StatusBadRequest)
+		return
+	}
+
+	h.jsonResponse(w, SessionResponse{
+		Success:    true,
+		Message:    "Игра завершена",
+		Scoreboard: scoreboard,
+	})
+}
+
 func (h *Handlers) StartGame(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	if !h.session.HasActiveSession() {
+		h.jsonResponse(w, GameResponse{
+			Success: false,
+			Message: "Сначала создайте сессию с игроками",
+		})
+		return
+	}
 
 	photo, err := h.game.StartNewRound(ctx)
 	if err != nil {
 		if errors.Is(err, service.ErrNoSituations) {
+			scoreboard := h.session.FinishGame()
 			h.jsonResponse(w, GameResponse{
-				Success:  false,
-				Message:  "Нет доступных ситуаций",
-				GameOver: true,
+				Success:    false,
+				Message:    "Нет доступных ситуаций",
+				GameOver:   true,
+				Scoreboard: scoreboard,
 			})
 			return
 		}
@@ -73,15 +154,16 @@ func (h *Handlers) StartGame(w http.ResponseWriter, r *http.Request) {
 	current, total, _ := h.game.GetCurrentPhotoInfo()
 
 	h.jsonResponse(w, GameResponse{
-		Success:      true,
-		PhotoURL:     h.getPhotoURL(ctx, photo.FileID),
-		CurrentPhoto: current,
-		TotalPhotos:  total,
-		HasMore:      current < total,
+		Success:       true,
+		PhotoURL:      h.getPhotoURL(ctx, photo.FileID),
+		CurrentPhoto:  current,
+		TotalPhotos:   total,
+		HasMore:       current < total,
+		CurrentPlayer: h.session.GetCurrentPlayer(),
+		Scoreboard:    h.session.GetScoreboard(),
 	})
 }
 
-// POST /api/next-photo
 func (h *Handlers) NextPhoto(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -117,7 +199,6 @@ func (h *Handlers) NextPhoto(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /api/answer
 func (h *Handlers) ShowAnswer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -134,27 +215,32 @@ func (h *Handlers) ShowAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.session.NotifyTurnEnd()
+
 	h.jsonResponse(w, GameResponse{
-		Success: true,
-		Answer:  answer,
+		Success:       true,
+		Answer:        answer,
+		NeedScore:     true,
+		CurrentPlayer: h.session.GetCurrentPlayer(),
 	})
 }
 
-// POST /api/next-round
 func (h *Handlers) NextRound(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Завершаем текущий раунд
+	nextPlayer := h.session.NextPlayer()
+
 	_ = h.game.FinishRound(ctx)
 
-	// Начинаем новый
 	photo, err := h.game.StartNewRound(ctx)
 	if err != nil {
 		if errors.Is(err, service.ErrNoSituations) {
+			scoreboard := h.session.FinishGame()
 			h.jsonResponse(w, GameResponse{
-				Success:  false,
-				Message:  "Все ситуации сыграны! 🎉",
-				GameOver: true,
+				Success:    false,
+				Message:    "Все ситуации сыграны! 🎉",
+				GameOver:   true,
+				Scoreboard: scoreboard,
 			})
 			return
 		}
@@ -165,15 +251,24 @@ func (h *Handlers) NextRound(w http.ResponseWriter, r *http.Request) {
 	current, total, _ := h.game.GetCurrentPhotoInfo()
 
 	h.jsonResponse(w, GameResponse{
-		Success:      true,
-		PhotoURL:     h.getPhotoURL(ctx, photo.FileID),
-		CurrentPhoto: current,
-		TotalPhotos:  total,
-		HasMore:      current < total,
+		Success:       true,
+		PhotoURL:      h.getPhotoURL(ctx, photo.FileID),
+		CurrentPhoto:  current,
+		TotalPhotos:   total,
+		HasMore:       current < total,
+		CurrentPlayer: nextPlayer,
+		Scoreboard:    h.session.GetScoreboard(),
 	})
 }
 
-// GET /api/stats
+func (h *Handlers) GetScoreboard(w http.ResponseWriter, r *http.Request) {
+	scoreboard := h.session.GetScoreboard()
+	h.jsonResponse(w, SessionResponse{
+		Success:    true,
+		Scoreboard: scoreboard,
+	})
+}
+
 func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -190,7 +285,6 @@ func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getPhotoURL возвращает URL для получения фото из Telegram
 func (h *Handlers) getPhotoURL(ctx context.Context, fileID string) string {
 	return "/api/photo/" + fileID
 }

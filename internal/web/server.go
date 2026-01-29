@@ -17,6 +17,7 @@ type Server struct {
 	httpServer *http.Server
 	handlers   *Handlers
 	botAPI     *tgbotapi.BotAPI
+	Session    *SessionManager
 }
 
 func NewServer(addr string, repo *postgres.SituationRepository, botToken string) (*Server, error) {
@@ -25,16 +26,21 @@ func NewServer(addr string, repo *postgres.SituationRepository, botToken string)
 		return nil, fmt.Errorf("failed to create bot API for web: %w", err)
 	}
 
-	handlers := NewHandlers(repo)
+	session := NewSessionManager()
+	handlers := NewHandlers(repo, session)
 
 	mux := http.NewServeMux()
 
 	s := &Server{
 		handlers: handlers,
 		botAPI:   botAPI,
+		Session:  session,
 	}
 
-	// API routes
+	mux.HandleFunc("/api/session/create", s.methodPost(handlers.CreateSession))
+	mux.HandleFunc("/api/session", s.methodGet(handlers.GetSession))
+	mux.HandleFunc("/api/session/end", s.methodPost(handlers.EndSession))
+	mux.HandleFunc("/api/scoreboard", s.methodGet(handlers.GetScoreboard))
 	mux.HandleFunc("/api/start", s.methodPost(handlers.StartGame))
 	mux.HandleFunc("/api/next-photo", s.methodPost(handlers.NextPhoto))
 	mux.HandleFunc("/api/answer", s.methodPost(handlers.ShowAnswer))
@@ -60,6 +66,26 @@ func (s *Server) Run() error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
+}
+
+func (s *Server) AddScoreToCurrentPlayer(score float64) (string, float64, bool) {
+	player := s.Session.AddScoreToCurrentPlayer(score)
+	if player == nil {
+		return "", 0, false
+	}
+	return player.Name, player.Score, true
+}
+
+func (s *Server) GetCurrentPlayerName() string {
+	player := s.Session.GetCurrentPlayer()
+	if player == nil {
+		return ""
+	}
+	return player.Name
+}
+
+func (s *Server) HasActiveSession() bool {
+	return s.Session.HasActiveSession()
 }
 
 func (s *Server) servePhoto(w http.ResponseWriter, r *http.Request) {
