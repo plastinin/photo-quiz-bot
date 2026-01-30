@@ -12,7 +12,6 @@ const currentPlayerName = document.getElementById('currentPlayerName');
 
 const moreBtn = document.getElementById('moreBtn');
 const answerBtn = document.getElementById('answerBtn');
-const nextBtn = document.getElementById('nextBtn');
 const newGameBtn = document.getElementById('newGameBtn');
 
 const photo = document.getElementById('photo');
@@ -37,18 +36,17 @@ const snackbar = document.getElementById('snackbar');
 // State
 let isLoading = false;
 let playerCount = 1;
+let answerShown = false; // Флаг: ответ уже показан
 const MAX_PLAYERS = 10;
 
 // Photo carousel state
-let photoUrls = [];        // Массив URL открытых фото
-let currentPhotoIndex = 0; // Текущий индекс в карусели
-let totalPhotosCount = 1;  // Всего фото в ситуации
-let unlockedPhotos = 1;    // Сколько фото открыто
+let photoUrls = [];
+let currentPhotoIndex = 0;
+let totalPhotosCount = 1;
+let unlockedPhotos = 1;
 
 // Player inputs management
 function addPlayerInput() {
-    console.log('addPlayerInput called, current count:', playerCount);
-    
     if (playerCount >= MAX_PLAYERS) {
         showSnackbar('Максимум 10 игроков');
         return;
@@ -64,11 +62,8 @@ function addPlayerInput() {
     `;
     
     playersForm.appendChild(group);
-    
-    // Focus new input
     group.querySelector('input').focus();
     
-    // Setup remove button
     group.querySelector('.btn-remove').addEventListener('click', function() {
         group.remove();
         playerCount--;
@@ -134,8 +129,7 @@ function setLoading(loading) {
     isLoading = loading;
     photoLoader.classList.toggle('hidden', !loading);
     moreBtn.disabled = loading;
-    answerBtn.disabled = loading;
-    nextBtn.disabled = loading;
+    answerBtn.disabled = loading || answerShown;
 }
 
 // Photo carousel functions
@@ -149,7 +143,7 @@ function resetPhotoCarousel() {
 function addPhotoToCarousel(url) {
     photoUrls.push(url);
     unlockedPhotos = photoUrls.length;
-    currentPhotoIndex = unlockedPhotos - 1; // Показываем последнее добавленное
+    currentPhotoIndex = unlockedPhotos - 1;
     updateCarouselNav();
 }
 
@@ -170,11 +164,9 @@ function showPhotoAtIndex(index) {
 }
 
 function updateCarouselNav() {
-    // Обновляем счётчик
     currentPhotoSpan.textContent = currentPhotoIndex + 1;
     unlockedCountSpan.textContent = unlockedPhotos;
     
-    // Показываем/скрываем кнопки навигации
     if (unlockedPhotos > 1) {
         photoPrev.classList.remove('hidden');
         photoNext.classList.remove('hidden');
@@ -183,11 +175,9 @@ function updateCarouselNav() {
         photoNext.classList.add('hidden');
     }
     
-    // Включаем/выключаем кнопки
     photoPrev.disabled = currentPhotoIndex === 0;
     photoNext.disabled = currentPhotoIndex >= unlockedPhotos - 1;
     
-    // Обновляем кнопку "Ещё"
     moreBtn.disabled = unlockedPhotos >= totalPhotosCount;
 }
 
@@ -222,9 +212,11 @@ function updatePhoto(data) {
     }
 
     updateCarouselNav();
-
-    // Hide answer when new photo loads
+    
+    // Скрываем ответ и сбрасываем флаг
     answerCard.classList.add('hidden');
+    answerShown = false;
+    answerBtn.disabled = false;
 }
 
 function updateCurrentPlayer(player) {
@@ -247,12 +239,13 @@ function updateScoreboard(scoreboard) {
         const positionClass = position <= 3 ? `scoreboard__position--${position}` : '';
         const positionIcon = position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : position;
         const currentClass = player.isCurrentPlayer ? 'scoreboard__item--current' : '';
+        const scoreDisplay = Number.isInteger(player.score) ? player.score : player.score.toFixed(1);
         
         return `
             <div class="scoreboard__item ${currentClass}">
                 <div class="scoreboard__position ${positionClass}">${positionIcon}</div>
                 <div class="scoreboard__name">${escapeHtml(player.name)}</div>
-                <div class="scoreboard__score">${player.score} 🤑</div>
+                <div class="scoreboard__score">${scoreDisplay} 🤑</div>
             </div>
         `;
     }).join('');
@@ -314,13 +307,13 @@ async function createSession() {
         return;
     }
     
-    // Start game immediately after session creation
     await startGame();
 }
 
 async function startGame() {
     setLoading(true);
     resetPhotoCarousel();
+    answerShown = false;
     
     const data = await api('start', 'POST');
     setLoading(false);
@@ -365,7 +358,7 @@ async function unlockNextPhoto() {
 }
 
 async function showAnswer() {
-    if (isLoading) return;
+    if (isLoading || answerShown) return;
 
     const data = await api('answer', 'POST');
 
@@ -374,21 +367,20 @@ async function showAnswer() {
     if (data.success) {
         answerText.textContent = data.answer;
         answerCard.classList.remove('hidden');
+        answerWaiting.classList.remove('hidden');
         
-        // Show waiting message if scores need to be entered
-        if (data.needScore) {
-            answerWaiting.classList.remove('hidden');
-        }
+        // Блокируем кнопку ответа
+        answerShown = true;
+        answerBtn.disabled = true;
     } else {
         showSnackbar(data.message || 'Ошибка');
     }
 }
 
-async function nextRound() {
-    if (isLoading) return;
-
+async function loadNextRound() {
     setLoading(true);
     resetPhotoCarousel();
+    answerShown = false;
     
     const data = await api('next-round', 'POST');
     setLoading(false);
@@ -414,7 +406,6 @@ async function nextRound() {
 }
 
 function newGame() {
-    // Reset form
     playersForm.innerHTML = `
         <div class="player-input-group">
             <input type="text" class="input player-input" placeholder="Игрок 1" maxlength="20">
@@ -422,44 +413,55 @@ function newGame() {
         </div>
     `;
     playerCount = 1;
+    answerShown = false;
     updateRemoveButtons();
     resetPhotoCarousel();
     
     showScreen(setupScreen);
 }
 
-// Polling for scoreboard updates (to see score changes from bot)
-let scoreboardPollInterval = null;
+// Polling for updates (scoreboard + auto next round)
+let pollInterval = null;
+let lastRound = 0;
 
-function startScoreboardPolling() {
-    if (scoreboardPollInterval) return;
+function startPolling() {
+    if (pollInterval) return;
     
-    scoreboardPollInterval = setInterval(async () => {
+    pollInterval = setInterval(async () => {
         if (gameScreen.classList.contains('hidden')) {
-            stopScoreboardPolling();
+            stopPolling();
             return;
         }
         
         const data = await api('scoreboard');
         if (data && data.success) {
             updateScoreboard(data.scoreboard);
+            
+            // Проверяем, изменился ли раунд (значит админ выставил оценку)
+            if (data.currentRound && data.currentRound > lastRound && answerShown) {
+                lastRound = data.currentRound;
+                // Автоматически загружаем следующий раунд
+                await loadNextRound();
+            } else if (data.currentRound) {
+                lastRound = data.currentRound;
+            }
         }
-    }, 2000);
+    }, 1500);
 }
 
-function stopScoreboardPolling() {
-    if (scoreboardPollInterval) {
-        clearInterval(scoreboardPollInterval);
-        scoreboardPollInterval = null;
+function stopPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
     }
 }
 
 // Start polling when game screen is shown
 const observer = new MutationObserver(() => {
     if (!gameScreen.classList.contains('hidden')) {
-        startScoreboardPolling();
+        startPolling();
     } else {
-        stopScoreboardPolling();
+        stopPolling();
     }
 });
 
@@ -467,7 +469,6 @@ observer.observe(gameScreen, { attributes: true, attributeFilter: ['class'] });
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-    // Setup screen - Enter to start
     if (!setupScreen.classList.contains('hidden')) {
         if (e.code === 'Enter' && e.target.classList.contains('player-input')) {
             e.preventDefault();
@@ -476,7 +477,6 @@ document.addEventListener('keydown', (e) => {
         return;
     }
     
-    // Game over screen - Enter for new game
     if (!gameOverScreen.classList.contains('hidden')) {
         if (e.code === 'Enter') {
             e.preventDefault();
@@ -485,7 +485,6 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    // Game screen
     if (gameScreen.classList.contains('hidden')) return;
 
     switch (e.code) {
@@ -495,46 +494,32 @@ document.addEventListener('keydown', (e) => {
             break;
         case 'Enter':
             e.preventDefault();
-            showAnswer();
+            if (!answerShown) {
+                showAnswer();
+            }
             break;
         case 'ArrowRight':
             e.preventDefault();
-            if (e.shiftKey) {
-                nextRound();
-            } else {
-                nextPhotoInCarousel();
-            }
+            nextPhotoInCarousel();
             break;
         case 'ArrowLeft':
             e.preventDefault();
             prevPhoto();
-            break;
-        case 'ArrowDown':
-            e.preventDefault();
-            nextRound();
             break;
     }
 });
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, setting up event listeners');
-    
-    // Event listeners
     addPlayerBtn.addEventListener('click', addPlayerInput);
     createSessionBtn.addEventListener('click', createSession);
     moreBtn.addEventListener('click', unlockNextPhoto);
     answerBtn.addEventListener('click', showAnswer);
-    nextBtn.addEventListener('click', nextRound);
     newGameBtn.addEventListener('click', newGame);
     
-    // Photo carousel navigation
     photoPrev.addEventListener('click', prevPhoto);
     photoNext.addEventListener('click', nextPhotoInCarousel);
     
-    // Initial setup
     updateRemoveButtons();
     updateStats();
-    
-    console.log('Setup complete');
 });
