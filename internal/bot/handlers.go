@@ -159,7 +159,14 @@ func (h *Handler) handleScoreInput(ctx context.Context, msg *tgbotapi.Message, s
 
 	h.clearScoreState(msg.From.ID)
 
-	reply := tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf("✅ *%s* получает *%.1f* 🤑 BazuCoin!\n\nВсего: *%.1f* 🤑", playerName, score, totalScore))
+	// Получаем следующего игрока
+	nextPlayer := h.web.Session.NextPlayer()
+	nextPlayerMsg := ""
+	if nextPlayer != nil {
+		nextPlayerMsg = fmt.Sprintf("\n\n➡️ Следующий ход: *%s*", nextPlayer.Name)
+	}
+
+	reply := tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf("✅ *%s* получает *%.1f* 🤑 BazuCoin!\n\nВсего: *%.1f* 🤑%s", playerName, score, totalScore, nextPlayerMsg))
 	reply.ParseMode = "Markdown"
 	h.bot.Send(reply)
 }
@@ -168,6 +175,39 @@ func (h *Handler) clearScoreState(userID int64) {
 	h.scoreStateMu.Lock()
 	delete(h.scoreState, userID)
 	h.scoreStateMu.Unlock()
+}
+
+func (h *Handler) handleAddState(ctx context.Context, msg *tgbotapi.Message, state *AddSituationState) {
+	if !h.isAdmin(msg.From.ID) {
+		return
+	}
+
+	// Если ещё нет ответа — ожидаем текст
+	if state.Answer == "" {
+		if msg.Text == "" {
+			h.sendText(msg.Chat.ID, "Пожалуйста, введите текстовый ответ")
+			return
+		}
+		state.Answer = msg.Text
+		h.sendText(msg.Chat.ID, fmt.Sprintf("✅ Ответ сохранён: *%s*\n\nТеперь отправьте фотографии (от 1 до 5)", state.Answer))
+		return
+	}
+
+	// Ожидаем фото
+	if msg.Photo != nil && len(msg.Photo) > 0 {
+		if len(state.Photos) >= 5 {
+			h.sendText(msg.Chat.ID, "Максимум 5 фотографий. Нажмите 'Завершить добавление'")
+			return
+		}
+
+		// Берём фото максимального размера
+		photo := msg.Photo[len(msg.Photo)-1]
+		state.Photos = append(state.Photos, photo.FileID)
+
+		reply := tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf("📷 Фото %d добавлено\n\nМожете отправить ещё или нажмите кнопку для завершения", len(state.Photos)))
+		reply.ReplyMarkup = AddPhotoKeyboard()
+		h.bot.Send(reply)
+	}
 }
 
 func (h *Handler) handleCallback(ctx context.Context, cb *tgbotapi.CallbackQuery) {
@@ -206,7 +246,11 @@ func (h *Handler) cbScoreButton(ctx context.Context, cb *tgbotapi.CallbackQuery)
 
 	// Обработка отмены
 	if cb.Data == "score_cancel" {
-		h.cbScoreCancel(ctx, cb)
+		h.clearScoreState(cb.From.ID)
+		// Удаляем клавиатуру
+		edit := tgbotapi.NewEditMessageReplyMarkup(cb.Message.Chat.ID, cb.Message.MessageID, tgbotapi.InlineKeyboardMarkup{})
+		h.bot.Send(edit)
+		h.sendText(cb.Message.Chat.ID, "❌ Ввод BazuCoin отменён")
 		return
 	}
 
@@ -238,52 +282,16 @@ func (h *Handler) cbScoreButton(ctx context.Context, cb *tgbotapi.CallbackQuery)
 	edit := tgbotapi.NewEditMessageReplyMarkup(cb.Message.Chat.ID, cb.Message.MessageID, tgbotapi.InlineKeyboardMarkup{})
 	h.bot.Send(edit)
 
-	reply := tgbotapi.NewMessage(cb.Message.Chat.ID, fmt.Sprintf("✅ *%s* получает *%.1f* 🤑 BazuCoin!\n\nВсего: *%.1f* 🤑", playerName, score, totalScore))
+	// Получаем следующего игрока
+	nextPlayer := h.web.Session.NextPlayer()
+	nextPlayerMsg := ""
+	if nextPlayer != nil {
+		nextPlayerMsg = fmt.Sprintf("\n\n➡️ Следующий ход: *%s*", nextPlayer.Name)
+	}
+
+	reply := tgbotapi.NewMessage(cb.Message.Chat.ID, fmt.Sprintf("✅ *%s* получает *%.1f* 🤑 BazuCoin!\n\nВсего: *%.1f* 🤑%s", playerName, score, totalScore, nextPlayerMsg))
 	reply.ParseMode = "Markdown"
 	h.bot.Send(reply)
-}
-
-func (h *Handler) cbScoreCancel(ctx context.Context, cb *tgbotapi.CallbackQuery) {
-	h.clearScoreState(cb.From.ID)
-
-	// Удаляем клавиатуру
-	edit := tgbotapi.NewEditMessageReplyMarkup(cb.Message.Chat.ID, cb.Message.MessageID, tgbotapi.InlineKeyboardMarkup{})
-	h.bot.Send(edit)
-
-	h.sendText(cb.Message.Chat.ID, "❌ Ввод BazuCoin отменён")
-}
-
-func (h *Handler) handleAddState(ctx context.Context, msg *tgbotapi.Message, state *AddSituationState) {
-	if !h.isAdmin(msg.From.ID) {
-		return
-	}
-
-	// Если ещё нет ответа — ожидаем текст
-	if state.Answer == "" {
-		if msg.Text == "" {
-			h.sendText(msg.Chat.ID, "Пожалуйста, введите текстовый ответ")
-			return
-		}
-		state.Answer = msg.Text
-		h.sendText(msg.Chat.ID, fmt.Sprintf("✅ Ответ сохранён: *%s*\n\nТеперь отправьте фотографии (от 1 до 5)", state.Answer))
-		return
-	}
-
-	// Ожидаем фото
-	if msg.Photo != nil && len(msg.Photo) > 0 {
-		if len(state.Photos) >= 5 {
-			h.sendText(msg.Chat.ID, "Максимум 5 фотографий. Нажмите 'Завершить добавление'")
-			return
-		}
-
-		// Берём фото максимального размера
-		photo := msg.Photo[len(msg.Photo)-1]
-		state.Photos = append(state.Photos, photo.FileID)
-
-		reply := tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf("📷 Фото %d добавлено\n\nМожете отправить ещё или нажмите кнопку для завершения", len(state.Photos)))
-		reply.ReplyMarkup = AddPhotoKeyboard()
-		h.bot.Send(reply)
-	}
 }
 
 func (h *Handler) cmdStart(ctx context.Context, msg *tgbotapi.Message) {

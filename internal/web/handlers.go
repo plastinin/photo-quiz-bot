@@ -26,17 +26,18 @@ func NewHandlers(repo *postgres.SituationRepository, session *SessionManager) *H
 }
 
 type GameResponse struct {
-	Success       bool                  `json:"success"`
-	PhotoURL      string                `json:"photoUrl,omitempty"`
-	CurrentPhoto  int                   `json:"currentPhoto,omitempty"`
-	TotalPhotos   int                   `json:"totalPhotos,omitempty"`
-	Answer        string                `json:"answer,omitempty"`
-	Message       string                `json:"message,omitempty"`
-	HasMore       bool                  `json:"hasMore"`
-	GameOver      bool                  `json:"gameOver"`
-	CurrentPlayer *domain.Player        `json:"currentPlayer,omitempty"`
-	Scoreboard    []domain.PlayerScore  `json:"scoreboard,omitempty"`
-	NeedScore     bool                  `json:"needScore,omitempty"`
+	Success       bool                 `json:"success"`
+	PhotoURL      string               `json:"photoUrl,omitempty"`
+	CurrentPhoto  int                  `json:"currentPhoto,omitempty"`
+	TotalPhotos   int                  `json:"totalPhotos,omitempty"`
+	Answer        string               `json:"answer,omitempty"`
+	Message       string               `json:"message,omitempty"`
+	HasMore       bool                 `json:"hasMore"`
+	GameOver      bool                 `json:"gameOver"`
+	CurrentPlayer *domain.Player       `json:"currentPlayer,omitempty"`
+	Scoreboard    []domain.PlayerScore `json:"scoreboard,omitempty"`
+	NeedScore     bool                 `json:"needScore,omitempty"`
+	CurrentRound  int                  `json:"currentRound,omitempty"`
 }
 
 type StatsResponse struct {
@@ -46,11 +47,12 @@ type StatsResponse struct {
 }
 
 type SessionResponse struct {
-	Success       bool                  `json:"success"`
-	Message       string                `json:"message,omitempty"`
-	Session       *domain.GameSession   `json:"session,omitempty"`
-	CurrentPlayer *domain.Player        `json:"currentPlayer,omitempty"`
-	Scoreboard    []domain.PlayerScore  `json:"scoreboard,omitempty"`
+	Success       bool                 `json:"success"`
+	Message       string               `json:"message,omitempty"`
+	Session       *domain.GameSession  `json:"session,omitempty"`
+	CurrentPlayer *domain.Player       `json:"currentPlayer,omitempty"`
+	Scoreboard    []domain.PlayerScore `json:"scoreboard,omitempty"`
+	CurrentRound  int                  `json:"currentRound,omitempty"`
 }
 
 type CreateSessionRequest struct {
@@ -89,6 +91,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Session:       session,
 		CurrentPlayer: currentPlayer,
 		Scoreboard:    h.session.GetScoreboard(),
+		CurrentRound:  session.CurrentRound,
 	})
 }
 
@@ -107,6 +110,7 @@ func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
 		Session:       session,
 		CurrentPlayer: h.session.GetCurrentPlayer(),
 		Scoreboard:    h.session.GetScoreboard(),
+		CurrentRound:  session.CurrentRound,
 	})
 }
 
@@ -152,6 +156,11 @@ func (h *Handlers) StartGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	current, total, _ := h.game.GetCurrentPhotoInfo()
+	session := h.session.GetSession()
+	currentRound := 0
+	if session != nil {
+		currentRound = session.CurrentRound
+	}
 
 	h.jsonResponse(w, GameResponse{
 		Success:       true,
@@ -161,6 +170,7 @@ func (h *Handlers) StartGame(w http.ResponseWriter, r *http.Request) {
 		HasMore:       current < total,
 		CurrentPlayer: h.session.GetCurrentPlayer(),
 		Scoreboard:    h.session.GetScoreboard(),
+		CurrentRound:  currentRound,
 	})
 }
 
@@ -249,6 +259,11 @@ func (h *Handlers) NextRound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	current, total, _ := h.game.GetCurrentPhotoInfo()
+	session := h.session.GetSession()
+	currentRound := 0
+	if session != nil {
+		currentRound = session.CurrentRound
+	}
 
 	h.jsonResponse(w, GameResponse{
 		Success:       true,
@@ -258,14 +273,22 @@ func (h *Handlers) NextRound(w http.ResponseWriter, r *http.Request) {
 		HasMore:       current < total,
 		CurrentPlayer: nextPlayer,
 		Scoreboard:    h.session.GetScoreboard(),
+		CurrentRound:  currentRound,
 	})
 }
 
 func (h *Handlers) GetScoreboard(w http.ResponseWriter, r *http.Request) {
 	scoreboard := h.session.GetScoreboard()
+	session := h.session.GetSession()
+	currentRound := 0
+	if session != nil {
+		currentRound = session.CurrentRound
+	}
+
 	h.jsonResponse(w, SessionResponse{
-		Success:    true,
-		Scoreboard: scoreboard,
+		Success:      true,
+		Scoreboard:   scoreboard,
+		CurrentRound: currentRound,
 	})
 }
 
